@@ -1,0 +1,59 @@
+package com.example.ckyc.dao;
+
+import com.example.ckyc.dto.CersaiEnquiryResponse;
+
+import java.io.ByteArrayInputStream;
+import java.io.StringReader;
+import java.sql.*;
+
+public class EnquiryAttemptDao {
+    private final Connection conn;
+    public EnquiryAttemptDao(Connection conn){ this.conn = conn; }
+
+    public long nextRequestId() throws SQLException {
+        try (Statement st = conn.createStatement(); ResultSet rs = st.executeQuery("SELECT ckyc_enq_req_seq.NEXTVAL FROM DUAL")) { rs.next(); return rs.getLong(1); }
+    }
+
+    public void insertRequest(long requestId, String cif, String branchCode, String cifStatus, String idType, String idNumber, int attemptNo, String txnId, byte[] requestPayload, String envelopeXml) throws SQLException {
+        String sql = "INSERT INTO ckyc_enquiry_attempts (request_id,cif,branch_code,cif_status,id_type,id_number,attempt_no,txn_id,request_payload,request_envelope,request_created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, SYSTIMESTAMP)";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setLong(1, requestId);
+            ps.setString(2, cif);
+            ps.setString(3, branchCode);
+            ps.setString(4, cifStatus);
+            ps.setString(5, idType);
+            ps.setString(6, idNumber);
+            ps.setInt(7, attemptNo);
+            ps.setString(8, txnId);
+            if (requestPayload != null) ps.setBlob(9, new ByteArrayInputStream(requestPayload)); else ps.setNull(9, Types.BLOB);
+            if (envelopeXml != null) ps.setClob(10, new StringReader(envelopeXml)); else ps.setNull(10, Types.CLOB);
+            ps.executeUpdate();
+        }
+    }
+
+    public void updateResponse(long requestId, byte[] responsePayload, String responseXml, CersaiEnquiryResponse parsed, Integer httpStatus, String httpReason, String statusFlag, String remarks) throws SQLException {
+        String sql = "UPDATE ckyc_enquiry_attempts SET response_payload=?, response_xml=?, ckyc_no=?, ckyc_reference_id=?, name=?, fathers_name=?, age=?, image_type=?, photo_base64=?, kyc_date=?, updated_date=?, response_code=?, response_remarks=?, response_received_at=SYSTIMESTAMP, status_flag=? WHERE request_id=?";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            if (responsePayload != null) ps.setBlob(1, new ByteArrayInputStream(responsePayload)); else ps.setNull(1, Types.BLOB);
+            if (responseXml != null) ps.setClob(2, new StringReader(responseXml)); else ps.setNull(2, Types.CLOB);
+            ps.setString(3, parsed != null ? parsed.getCkycNo() : null);
+            ps.setString(4, parsed != null ? parsed.getCkycReferenceId() : null);
+            ps.setString(5, parsed != null ? parsed.getName() : null);
+            ps.setString(6, parsed != null ? parsed.getFathersName() : null);
+            if (parsed != null && parsed.getAge() != null) ps.setInt(7, parsed.getAge()); else ps.setNull(7, Types.INTEGER);
+            ps.setString(8, parsed != null ? parsed.getImageType() : null);
+            if (parsed != null && parsed.getPhotoBase64() != null) ps.setClob(9, new StringReader(parsed.getPhotoBase64())); else ps.setNull(9, Types.CLOB);
+            if (parsed != null && parsed.getKycDate() != null) {
+                try { java.sql.Date d = java.sql.Date.valueOf(parsed.getKycDate()); ps.setDate(10, d); } catch (Exception ex) { ps.setNull(10, Types.DATE); }
+            } else ps.setNull(10, Types.DATE);
+            if (parsed != null && parsed.getUpdatedDate() != null) {
+                try { java.sql.Date d = java.sql.Date.valueOf(parsed.getUpdatedDate()); ps.setDate(11, d); } catch (Exception ex) { ps.setNull(11, Types.DATE); }
+            } else ps.setNull(11, Types.DATE);
+            ps.setString(12, parsed != null ? parsed.getResponseCode() : null);
+            ps.setString(13, remarks);
+            ps.setString(14, statusFlag);
+            ps.setLong(15, requestId);
+            ps.executeUpdate();
+        }
+    }
+}
